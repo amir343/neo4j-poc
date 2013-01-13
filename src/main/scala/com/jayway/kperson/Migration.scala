@@ -3,9 +3,20 @@ package com.jayway.kperson
 import slick.session.{Session, Database}
 import scala.slick.jdbc.{GetResult, StaticQuery => Q}
 import scala.collection.mutable
+import org.neo4j.rest.graphdb.RestGraphDatabase
+import org.neo4j.graphdb.{RelationshipType, Node}
 
-case class Skill(name:String, level:Int)
-case class People(id:Int, firstName:String, lastName:String, skills:List[Skill] = List.empty[Skill])
+sealed abstract class PersonNode {
+  def name:String
+}
+case class Skill(name:String, level:Int) extends PersonNode
+case class People(id:Int, firstName:String, lastName:String, skills:List[Skill] = List.empty[Skill]) extends PersonNode {
+  override val name:String = s"$firstName $lastName"
+}
+
+object KNOWS extends RelationshipType {
+  val name = "KNOWS"
+}
 
 class KPersonMySql {
 
@@ -35,7 +46,41 @@ class KPersonMySql {
 
 }
 
+class NeoMigration {
+
+  val g = new RestGraphDatabase("http://localhost:7474/db/data")
+  val nodes = mutable.HashMap[String, Node]()
+
+  def migrate(employees:List[People]) {
+    employees foreach { emp =>
+      val empNode = createNode(emp)
+      emp.skills foreach { skill =>
+        val skillNode = createNode(skill)
+        val rel = empNode.createRelationshipTo(skillNode, KNOWS)
+        rel.setProperty("level", skill.level)
+      }
+    }
+  }
+
+  private def createNode(personNode:PersonNode):Node = {
+    nodes.get(personNode.name) match {
+      case None =>
+        val node = g.createNode()
+        node.setProperty("name", personNode.name)
+        nodes += personNode.name -> node
+        node
+      case Some(n) =>
+        n
+    }
+  }
+
+
+}
+
+
 object Migration extends App {
   val kPerson = new KPersonMySql()
-  kPerson.people foreach println
+  val people = kPerson.people
+  val neoMigration = new NeoMigration
+  neoMigration.migrate(people)
 }
