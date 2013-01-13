@@ -31,7 +31,7 @@ class KPersonMySql {
     }
   }
 
-  val people:List[People] = peopleWithSkills.toList
+  val people:List[People] = peopleWithSkills.toList filter { _.skills.size != 0 }
 
 }
 
